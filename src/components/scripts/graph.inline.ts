@@ -122,6 +122,7 @@ import {
       var showTags = config.showTags;
       var focusOnHover = config.focusOnHover;
       var enableRadial = config.enableRadial;
+      var hubThreshold = config.hubThreshold || 0;
 
       var data;
       try {
@@ -168,6 +169,18 @@ import {
 
       var neighbourhood = new Set();
       if (depth >= 0) {
+        // Undirected adjacency, built once: scanning every link for each visited
+        // node is quadratic and stalls on sites with thousands of links.
+        var adjacency = new Map();
+        var addEdge = function (a, b) {
+          var set = adjacency.get(a);
+          if (!set) adjacency.set(a, (set = new Set()));
+          set.add(b);
+        };
+        for (var li = 0; li < links.length; li++) {
+          addEdge(links[li].source, links[li].target);
+          addEdge(links[li].target, links[li].source);
+        }
         var queue = [slug];
         var seen = new Set([slug]);
         for (var d = 0; d <= depth && queue.length > 0; d++) {
@@ -175,17 +188,17 @@ import {
           for (var qi = 0; qi < queue.length; qi++) {
             var cur = queue[qi];
             neighbourhood.add(cur);
-            for (var li = 0; li < links.length; li++) {
-              var link = links[li];
-              if (link.source === cur && !seen.has(link.target)) {
-                seen.add(link.target);
-                nextQueue.push(link.target);
+            var neighbours = adjacency.get(cur);
+            if (!neighbours) continue;
+            // Show a hub, but don't walk through it — not even from its own
+            // page, where a thousand-spoke sunburst says nothing and stalls.
+            if (hubThreshold > 0 && neighbours.size > hubThreshold) continue;
+            neighbours.forEach(function (next) {
+              if (!seen.has(next)) {
+                seen.add(next);
+                nextQueue.push(next);
               }
-              if (link.target === cur && !seen.has(link.source)) {
-                seen.add(link.source);
-                nextQueue.push(link.source);
-              }
-            }
+            });
           }
           queue = nextQueue;
         }
